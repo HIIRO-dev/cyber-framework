@@ -211,7 +211,7 @@ def interactive_menu(ip, open_ports):
 
 if __name__ == "__main__":
     auto_update()
-    console.print(Panel.fit("[bold red]CYBER FRAMEWORK V14[/bold red]", subtitle="Elite Red Team Edition"))
+    console.print(Panel.fit("[bold red]CYBER FRAMEWORK V15[/bold red]", subtitle="Elite Red Team Edition"))
     
     if len(sys.argv) > 1:
         cible = sys.argv[1].replace("https://", "").replace("http://", "").split("/")[0]
