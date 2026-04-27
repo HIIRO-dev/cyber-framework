@@ -47,13 +47,23 @@ def generer_html():
     console.print("\n[bold green]>>> Rapport généré : rapports/rapport.html <<<[/bold green]")
 
 # --- ÉTAPE 1 : SCAN (NMAP) ---
-def scan_target(ip):
+def scan_target(ip, agressif=False):
     donnees_rapport["cible"] = ip
     nm = nmap.PortScanner()
     results = []
-    with console.status(f"[bold green]Analyse furtive de {ip} en cours...[/bold green]"):
+    
+    # Arguments par défaut
+    args = '-Pn -sV -T4'
+    msg = f"[bold green]Analyse furtive de {ip} en cours...[/bold green]"
+    
+    # Arguments si on choisit le scan poussé
+    if agressif:
+        args = '-Pn -sV -p- -T4' # -p- force le scan des 65535 ports existants
+        msg = f"[bold red]Analyse AGRESSIVE (65535 ports) de {ip} en cours... (Patientez)[/bold red]"
+
+    with console.status(msg):
         try:
-            nm.scan(ip, arguments='-Pn -sV -T4')
+            nm.scan(ip, arguments=args)
             for host in nm.all_hosts():
                 for proto in nm[host].all_protocols():
                     for port in nm[host][proto].keys():
@@ -69,33 +79,49 @@ def scan_target(ip):
         except Exception as e: console.print(f"[bold red]Erreur Nmap : {e}[/bold red]")
     return results
 
-# --- ÉTAPE 2 : SEARCHSPLOIT INTELLIGENT (ANTI-DOUBLONS) ---
+# --- ÉTAPE 2 : SEARCHSPLOIT INTELLIGENT (ANTI-SPAM V2) ---
 def run_searchsploit(open_ports):
-    console.print("\n[bold yellow][*] Recherche d'Exploits (Smart Mode)...[/bold yellow]")
+    console.print("\n[bold yellow][*] Recherche d'Exploits (Smart Mode V2)...[/bold yellow]")
     services_deja_vus = set()
 
     for p in open_ports:
-        product = p['product'].split()[0] if p['product'] else p['service']
-        version = p['version'].split()[0] if p['version'] else ""
-        
-        # Ignorer le mot "inconnue"
+        # On récupère le nom complet du produit ou du service
+        produit_complet = p.get('product', '')
+        if not produit_complet:
+            produit_complet = p.get('service', '')
+
+        # Nettoyage de la version (on ignore le mot "inconnue")
+        version = p.get('version', '').split()[0] if p.get('version') else ""
         if version.lower() == "inconnue":
             version = ""
 
-        signature = f"{product}_{version}"
-        if not product or signature in services_deja_vus:
+        if not produit_complet:
+            continue
+
+        # LE CERVEAU ANTI-SPAM : 
+        # Si le nom commence par un mot très générique, on garde 2 mots au lieu d'un.
+        mots = produit_complet.split()
+        mots_generiques = ["microsoft", "apache", "nginx", "vmware", "oracle"]
+        
+        if len(mots) > 1 and mots[0].lower() in mots_generiques:
+            terme_recherche = f"{mots[0]} {mots[1]}"  # Ex: "Microsoft HTTPAPI"
+        else:
+            terme_recherche = mots[0]  # Ex: "vsftpd"
+
+        signature = f"{terme_recherche}_{version}"
+        if signature in services_deja_vus:
             continue
         
         services_deja_vus.add(signature)
         
-        console.print(f"\n[bold blue]🔍 Test générique : {product}[/bold blue]")
-        subprocess.run(["searchsploit", "--disable-colour", product])
+        console.print(f"\n[bold blue]🔍 Test générique : {terme_recherche}[/bold blue]")
+        subprocess.run(["searchsploit", "--disable-colour", terme_recherche])
         
         if version:
-            console.print(f"[bold magenta]🎯 Test précis : {product} {version}[/bold magenta]")
-            subprocess.run(["searchsploit", "--disable-colour", product, version])
+            console.print(f"[bold magenta]🎯 Test précis : {terme_recherche} {version}[/bold magenta]")
+            subprocess.run(["searchsploit", "--disable-colour", terme_recherche, version])
         else:
-            console.print(f"[dim yellow]ℹ️ Version non détectée pour {product}, scan précis ignoré.[/dim yellow]")
+            console.print(f"[dim yellow]ℹ️ Version non détectée pour {terme_recherche}, scan précis ignoré.[/dim yellow]")
 
 # --- ÉTAPE 3 : WEB (GOBUSTER DYNAMIQUE) ---
 def run_web_enum(ip, open_ports):
@@ -227,17 +253,47 @@ def interactive_menu(ip, open_ports):
 
 if __name__ == "__main__":
     auto_update()
-    console.print(Panel.fit("[bold red]CYBER FRAMEWORK V16[/bold red]", subtitle="Elite Red Team Edition"))
+    console.print(Panel.fit("[bold red]CYBER FRAMEWORK V16.2[/bold red]", subtitle="Elite Red Team Edition"))
     
+    cible = ""
+    # Si on lance avec l'IP directement en argument (ex: cyber 192.168.1.1)
     if len(sys.argv) > 1:
         cible = sys.argv[1].replace("https://", "").replace("http://", "").split("/")[0]
-    else:
-        entree_brute = questionary.text("IP de la cible :").ask()
-        if not entree_brute: sys.exit()
-        cible = entree_brute.replace("https://", "").replace("http://", "").split("/")[0] if "/" not in entree_brute else entree_brute
-    
-    ports = scan_target(cible)
-    if ports: 
-        interactive_menu(cible, ports)
-    else: 
-        console.print("[red]Aucun port ouvert ou cible injoignable.[/red]")
+
+    # Boucle infinie pour garder le framework ouvert
+    while True:
+        if not cible:
+            entree_brute = questionary.text("IP de la cible (ou Réseau) :").ask()
+            if not entree_brute: sys.exit()
+            cible = entree_brute.replace("https://", "").replace("http://", "").split("/")[0] if "/" not in entree_brute else entree_brute
+        
+        # Premier scan classique
+        ports = scan_target(cible)
+        
+        if ports: 
+            interactive_menu(cible, ports)
+            cible = "" # Réinitialise l'IP quand on quitte le menu pour en scanner une autre
+        else: 
+            console.print("\n[bold red]❌ Aucun port standard trouvé ou cible injoignable.[/bold red]")
+            choix_fail = questionary.select(
+                "Que voulez-vous faire ?",
+                choices=[
+                    "1. 🚀 Lancer un scan AGRESSIF (Tous les 65535 ports, plus lent)",
+                    "2. 🔄 Scanner une autre IP / Réseau",
+                    "3. 🚪 Quitter"
+                ]
+            ).ask()
+
+            if not choix_fail or "3." in choix_fail:
+                sys.exit()
+            elif "1." in choix_fail:
+                # Deuxième chance : Scan Agressif
+                ports = scan_target(cible, agressif=True)
+                if ports:
+                    interactive_menu(cible, ports)
+                else:
+                    console.print("\n[bold red]☠️ Même en mode agressif, la cible est verrouillée (ou éteinte).[/bold red]\n")
+                cible = "" # On forcera à demander une nouvelle IP au prochain tour
+            elif "2." in choix_fail:
+                cible = "" # Ça va recommencer la boucle et redemander l'IP
+                
