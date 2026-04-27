@@ -174,7 +174,7 @@ def run_web_enum(ip, open_ports):
         
         # 2. Ajout de --wildcard pour contourner les protections F5 BIG-IP
         try:
-            cmd = ["gobuster", "dir", "-u", url, "-w", "juicy_words.txt", "-q", "-t", "20", "--wildcard"]
+            cmd = ["gobuster", "dir", "-u", url, "-w", "juicy_words.txt", "-q", "-t", "20"]
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True)
             
             for line in process.stdout:
@@ -184,7 +184,7 @@ def run_web_enum(ip, open_ports):
         except KeyboardInterrupt: 
             console.print("[dim yellow]Gobuster annulé par l'utilisateur.[/dim yellow]")
             pass
-        
+
 # --- ÉTAPE 4 : ARSENAL WINDOWS (WINRM & ENUM4LINUX) ---
 def windows_arsenal(ip):
     console.print("\n[bold cyan]🪟  ARSENAL WINDOWS 🪟[/bold cyan]")
