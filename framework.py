@@ -34,18 +34,36 @@ def ecrire_rapport(message):
     with open("rapports/rapport_audit.txt", "a") as f: f.write(f"[{timestamp}] {message}\n")
 
 def generer_html():
-    if not os.path.exists("rapports"): os.makedirs("rapports")
+    if not os.path.exists("rapports"): 
+        os.makedirs("rapports")
+        
+    # --- Création du nom de fichier dynamique ---
+    ip_cible = donnees_rapport['cible'].replace('/', '_') # Sécurité au cas où il y a un slash
+    date_heure = datetime.now().strftime("%Y-%m-%d_%Hh%M")
+    nom_fichier = f"rapports/{ip_cible}_{date_heure}.html"
+    # --------------------------------------------
+
     html = f"<html><head><meta charset='utf-8'><title>Rapport - {donnees_rapport['cible']}</title></head>"
     html += f"<body style='font-family: Arial, sans-serif; background: #1e1e1e; color: #fff; padding: 20px;'>"
-    html += f"<h1 style='color: #00ff00;'>Rapport d'Audit : {donnees_rapport['cible']}</h1>"
-    html += "<h2>Vulnérabilités / Découvertes</h2><table border='1' style='border-collapse: collapse; width: 100%;'>"
+    html += f"<h1 style='color: #00ff00;'>☠️ Rapport d'Audit : {donnees_rapport['cible']}</h1>"
+    html += f"<h3 style='color: #aaaaaa;'>📅 Date de l'attaque : {datetime.now().strftime('%d/%m/%Y à %H:%M:%S')}</h3><hr>"
+    html += "<h2>Vulnérabilités / Découvertes</h2><table border='1' style='border-collapse: collapse; width: 100%; text-align: left;'>"
     html += "<tr style='background: #333;'><th>Sévérité</th><th>Outil</th><th>Détail</th></tr>"
-    for v in donnees_rapport["vulns"]: 
-        html += f"<tr><td>{v.get('severite', 'Info')}</td><td>{v['outil']}</td><td>{v['nom']}</td></tr>"
+    
+    if not donnees_rapport["vulns"]:
+        html += "<tr><td colspan='3' style='text-align:center;'>Aucune vulnérabilité n'a été enregistrée pour cette session.</td></tr>"
+    else:
+        for v in donnees_rapport["vulns"]: 
+            html += f"<tr><td>{v.get('severite', 'Info')}</td><td>{v['outil']}</td><td>{v['nom']}</td></tr>"
+            
     html += "</table></body></html>"
-    with open("rapports/rapport.html", "w") as f: f.write(html)
-    console.print("\n[bold green]>>> Rapport généré : rapports/rapport.html <<<[/bold green]")
-
+    
+    # On sauvegarde dans le fichier avec le nouveau nom unique
+    with open(nom_fichier, "w", encoding="utf-8") as f: 
+        f.write(html)
+        
+    console.print(f"\n[bold green]>>> 📄 Rapport sauvegardé avec succès : {nom_fichier} <<<[/bold green]")
+    
 # --- ÉTAPE 1 : SCAN (NMAP) ---
 def scan_target(ip, agressif=False):
     donnees_rapport["cible"] = ip
@@ -296,4 +314,3 @@ if __name__ == "__main__":
                 cible = "" # On forcera à demander une nouvelle IP au prochain tour
             elif "2." in choix_fail:
                 cible = "" # Ça va recommencer la boucle et redemander l'IP
-                
