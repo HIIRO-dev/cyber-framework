@@ -63,7 +63,7 @@ def generer_html():
         f.write(html)
         
     console.print(f"\n[bold green]>>> 📄 Rapport sauvegardé avec succès : {nom_fichier} <<<[/bold green]")
-    
+
 # --- ÉTAPE 1 : SCAN (NMAP) ---
 def scan_target(ip, agressif=False):
     donnees_rapport["cible"] = ip
@@ -141,15 +141,25 @@ def run_searchsploit(open_ports):
         else:
             console.print(f"[dim yellow]ℹ️ Version non détectée pour {terme_recherche}, scan précis ignoré.[/dim yellow]")
 
-# --- ÉTAPE 3 : WEB (GOBUSTER DYNAMIQUE) ---
+# --- ÉTAPE 3 : WEB (GOBUSTER DYNAMIQUE & ANTI-WILDCARD) ---
 def run_web_enum(ip, open_ports):
     web_ports = [p['port'] for p in open_ports if p['port'] in [80, 443, 8080]]
     if not web_ports: return console.print("[bold red]Aucun port Web détecté.[/bold red]")
     
-    console.print("\n[bold yellow][*] Création du dictionnaire 'Juicy'...[/bold yellow]")
-    juicy_words = ["admin", "panel", "password", "pass", "user", "users", "login", "backup", "db", "config", "secret", "api", "test", "dev", ".git", ".env"]
+    console.print("\n[bold yellow][*] Création du dictionnaire 'Juicy' (Fusion propre)...[/bold yellow]")
+    juicy_words = [
+        "admin", "panel", "password", "pass", "user", "users", "login", 
+        "backup", "db", "config", "secret", "api", "test", "dev", ".git", ".env"
+    ]
+    
+    # 1. Fusion propre en Python (Corrige le bug 'cat >>')
     with open("juicy_words.txt", "w") as f:
-        for word in juicy_words: f.write(f"{word}\n")
+        for word in juicy_words:
+            f.write(f"{word}\n")
+        # Si on a un fichier common.txt, on l'ajoute à la suite
+        if os.path.exists("common.txt"):
+            with open("common.txt", "r") as common_file:
+                f.write(common_file.read())
 
     for port in web_ports:
         url = f"http://{ip}:{port}" if port != 443 else f"https://{ip}"
@@ -161,17 +171,20 @@ def run_web_enum(ip, open_ports):
         except Exception: pass
 
         console.print(f"\n[bold yellow][*] Fuzzing Gobuster en cours sur {url}...[/bold yellow]")
-        wordlist = "juicy_words.txt"
-        if os.path.exists("common.txt"):
-            subprocess.run(["cat", "common.txt", ">>", "juicy_words.txt"]) # Fusion
-            
+        
+        # 2. Ajout de --wildcard pour contourner les protections F5 BIG-IP
         try:
-            process = subprocess.Popen(["gobuster", "dir", "-u", url, "-w", wordlist, "-q", "-t", "20"], stdout=subprocess.PIPE, text=True)
+            cmd = ["gobuster", "dir", "-u", url, "-w", "juicy_words.txt", "-q", "-t", "20", "--wildcard"]
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True)
+            
             for line in process.stdout:
-                if "Status: 200" in line or "Status: 301" in line:
+                # On affiche seulement ce qui est vraiment intéressant
+                if "Status: 200" in line or "Status: 204" in line or "Status: 301" in line:
                     console.print(f"[bold green][+] {line.strip()}[/bold green]")
-        except KeyboardInterrupt: pass
-
+        except KeyboardInterrupt: 
+            console.print("[dim yellow]Gobuster annulé par l'utilisateur.[/dim yellow]")
+            pass
+        
 # --- ÉTAPE 4 : ARSENAL WINDOWS (WINRM & ENUM4LINUX) ---
 def windows_arsenal(ip):
     console.print("\n[bold cyan]🪟  ARSENAL WINDOWS 🪟[/bold cyan]")
