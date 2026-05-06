@@ -298,12 +298,11 @@ def metasploit_autopwn(ip):
         console.print(f"[bold red]Erreur lors du lancement de Metasploit : {e}[/bold red]")
 
 
-# --- MODULE DE CARTOGRAPHIE RÉSEAU (Vue Globale) ---
+# --- MODULE DE CARTOGRAPHIE RÉSEAU (Vue Globale + Flèches) ---
 def scan_network(network):
     console.print(f"\n[bold yellow][*] Déploiement du radar sur le réseau {network}...[/bold yellow]")
     nm = nmap.PortScanner()
     
-    # On fait un Fast Scan (-F = 100 ports fréquents) pour aller super vite sur un /24
     with console.status(f"[bold green]Cartographie en cours (Ping + Fast Scan des ports)...[/bold green]"):
         try:
             nm.scan(hosts=network, arguments='-Pn -F -sV -T4') 
@@ -322,37 +321,43 @@ def scan_network(network):
     table.add_column("Nom d'hôte", style="yellow")
     table.add_column("Ports Ouverts (Services)", style="cyan")
     
-    reseau_data = [] # Pour stocker les IPs valides
+    # Nouvelle liste pour le menu interactif
+    choix_menu = []
     
     for host in hosts:
         hostname = nm[host].hostname() if nm[host].hostname() else "Inconnu"
         ports_trouves = []
         
-        # On fouille dans les résultats pour lister les ports ouverts
         for proto in nm[host].all_protocols():
             for port in nm[host][proto].keys():
                 if nm[host][proto][port]['state'] == 'open':
                     service = nm[host][proto][port]['name']
                     ports_trouves.append(f"{port} ({service})")
         
-        reseau_data.append(host)
-        
-        # On formate l'affichage des ports
-        ports_str = ", ".join(ports_trouves) if ports_trouves else "[dim]Aucun port standard[/dim]"
+        ports_str = ", ".join(ports_trouves) if ports_trouves else "Aucun port standard"
         table.add_row(host, hostname, ports_str)
         
+        # On ajoute la machine à la liste des choix avec son nom
+        choix_menu.append(f"{host} - {hostname}")
+        
     console.print(table)
+    console.print("\n") # Petit espace pour respirer
     
-    choix_ip = questionary.text("Entre l'IP EXACTE de la machine à attaquer (ou 'q' pour annuler) :").ask()
+    # On rajoute l'option pour annuler
+    choix_menu.append("❌ Annuler (Scanner une autre cible)")
     
-    if not choix_ip or choix_ip.lower() == 'q':
+    # LE NOUVEAU MENU AVEC LES FLÈCHES
+    selection = questionary.select(
+        "🎯 Choisis la machine à infiltrer (Use arrow keys) :",
+        choices=choix_menu
+    ).ask()
+    
+    if not selection or "❌ Annuler" in selection:
         return None
         
-    if choix_ip in reseau_data:
-        return choix_ip
-    else:
-        console.print("[bold red]IP invalide ou non détectée dans le tableau.[/bold red]")
-        return None
+    # On extrait juste l'IP (la partie avant le " - ")
+    ip_choisie = selection.split(" - ")[0]
+    return ip_choisie
    
 # --- MENU PRINCIPAL (INTERACTIF) ---
 def interactive_menu(ip, open_ports):
