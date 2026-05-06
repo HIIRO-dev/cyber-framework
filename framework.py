@@ -297,7 +297,50 @@ def metasploit_autopwn(ip):
     except Exception as e:
         console.print(f"[bold red]Erreur lors du lancement de Metasploit : {e}[/bold red]")
 
+
+# --- MODULE DE DÉCOUVERTE RÉSEAU ---
+def discover_hosts(network):
+    console.print(f"\n[bold yellow][*] Balayage radar du réseau {network}... (Recherche de cibles)[/bold yellow]")
+    nm = nmap.PortScanner()
+    try:
+        # -sn = Ping Scan (ne scanne pas les ports, cherche juste qui est allumé)
+        nm.scan(hosts=network, arguments='-sn -T4') 
+    except Exception as e:
+        console.print(f"[bold red]Erreur de scan réseau : {e}[/bold red]")
+        return None
+        
+    hosts = nm.all_hosts()
+    if not hosts:
+        console.print("[bold red]❌ Aucun appareil trouvé (ou ils bloquent tous le ping).[/bold red]")
+        return None
+        
+    console.print("\n[bold cyan]📡 MACHINES DÉTECTÉES SUR LE RÉSEAU 📡[/bold cyan]")
+    table = Table(show_header=True, header_style="bold magenta")
+    table.add_column("ID", style="cyan", justify="center")
+    table.add_column("Adresse IP", style="green")
+    table.add_column("Nom d'hôte", style="yellow")
     
+    for idx, host in enumerate(hosts):
+        hostname = nm[host].hostname() if nm[host].hostname() else "Inconnu"
+        table.add_row(str(idx + 1), host, hostname)
+        
+    console.print(table)
+    
+    choix = questionary.text("Entre l'ID de la machine à cibler (ou 'q' pour annuler) :").ask()
+    
+    if not choix or choix.lower() == 'q':
+        return None
+        
+    try:
+        choix_idx = int(choix) - 1
+        if 0 <= choix_idx < len(hosts):
+            return hosts[choix_idx]
+    except:
+        pass
+    
+    console.print("[dim red]Choix invalide.[/dim red]")
+    return None
+   
 # --- MENU PRINCIPAL (INTERACTIF) ---
 def interactive_menu(ip, open_ports):
     while True:
@@ -338,32 +381,38 @@ def interactive_menu(ip, open_ports):
 
 if __name__ == "__main__":
     auto_update()
-    console.print(Panel.fit("[bold red]CYBER FRAMEWORK V16.6[/bold red]", subtitle="Elite Red Team Edition"))
+    console.print(Panel.fit("[bold red]CYBER FRAMEWORK V16.7[/bold red]", subtitle="Édition Red Team - Scanner de Réseaux"))
     
     cible = ""
-    # Si on lance avec l'IP directement en argument (ex: cyber 192.168.1.1)
     if len(sys.argv) > 1:
-        cible = sys.argv[1].replace("https://", "").replace("http://", "").split("/")[0]
+        cible = sys.argv[1].replace("https://", "").replace("http://", "")
 
-    # Boucle infinie pour garder le framework ouvert
     while True:
         if not cible:
-            entree_brute = questionary.text("IP de la cible (ou Réseau) :").ask()
+            entree_brute = questionary.text("IP de la cible ou Réseau (ex: 192.168.1.0/24) :").ask()
             if not entree_brute: sys.exit()
-            cible = entree_brute.replace("https://", "").replace("http://", "").split("/")[0] if "/" not in entree_brute else entree_brute
+            cible = entree_brute.replace("https://", "").replace("http://", "")
+            
+        # LE CERVEAU RÉSEAU : Si c'est un réseau complet (contient un slash ou un tiret)
+        if "/" in cible or "-" in cible or cible.endswith(".0"):
+            ip_choisie = discover_hosts(cible)
+            if not ip_choisie:
+                cible = "" # On réinitialise pour redemander une cible
+                continue
+            cible = ip_choisie # L'IP précise devient la cible principale !
         
-        # Premier scan classique
+        # Scan classique ou agressif sur l'IP UNIQUE
         ports = scan_target(cible)
         
         if ports: 
             interactive_menu(cible, ports)
-            cible = "" # Réinitialise l'IP quand on quitte le menu pour en scanner une autre
+            cible = "" # Réinitialise après avoir quitté le menu
         else: 
             console.print("\n[bold red]❌ Aucun port standard trouvé ou cible injoignable.[/bold red]")
             choix_fail = questionary.select(
                 "Que voulez-vous faire ?",
                 choices=[
-                    "1. 🚀 Lancer un scan AGRESSIF (Tous les 65535 ports, plus lent)",
+                    "1. 🚀 Lancer un scan AGRESSIF (Tous les 65535 ports)",
                     "2. 🔄 Scanner une autre IP / Réseau",
                     "3. 🚪 Quitter"
                 ]
@@ -372,12 +421,11 @@ if __name__ == "__main__":
             if not choix_fail or "3." in choix_fail:
                 sys.exit()
             elif "1." in choix_fail:
-                # Deuxième chance : Scan Agressif
                 ports = scan_target(cible, agressif=True)
                 if ports:
                     interactive_menu(cible, ports)
                 else:
                     console.print("\n[bold red]☠️ Même en mode agressif, la cible est verrouillée (ou éteinte).[/bold red]\n")
-                cible = "" # On forcera à demander une nouvelle IP au prochain tour
+                cible = ""
             elif "2." in choix_fail:
-                cible = "" # Ça va recommencer la boucle et redemander l'IP
+                cible = ""
