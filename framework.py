@@ -298,48 +298,61 @@ def metasploit_autopwn(ip):
         console.print(f"[bold red]Erreur lors du lancement de Metasploit : {e}[/bold red]")
 
 
-# --- MODULE DE DÉCOUVERTE RÉSEAU ---
-def discover_hosts(network):
-    console.print(f"\n[bold yellow][*] Balayage radar du réseau {network}... (Recherche de cibles)[/bold yellow]")
+# --- MODULE DE CARTOGRAPHIE RÉSEAU (Vue Globale) ---
+def scan_network(network):
+    console.print(f"\n[bold yellow][*] Déploiement du radar sur le réseau {network}...[/bold yellow]")
     nm = nmap.PortScanner()
-    try:
-        # -sn = Ping Scan (ne scanne pas les ports, cherche juste qui est allumé)
-        nm.scan(hosts=network, arguments='-sn -T4') 
-    except Exception as e:
-        console.print(f"[bold red]Erreur de scan réseau : {e}[/bold red]")
-        return None
-        
+    
+    # On fait un Fast Scan (-F = 100 ports fréquents) pour aller super vite sur un /24
+    with console.status(f"[bold green]Cartographie en cours (Ping + Fast Scan des ports)...[/bold green]"):
+        try:
+            nm.scan(hosts=network, arguments='-Pn -F -sV -T4') 
+        except Exception as e:
+            console.print(f"[bold red]Erreur de scan réseau : {e}[/bold red]")
+            return None
+            
     hosts = nm.all_hosts()
     if not hosts:
-        console.print("[bold red]❌ Aucun appareil trouvé (ou ils bloquent tous le ping).[/bold red]")
+        console.print("[bold red]❌ Aucune machine trouvée sur ce réseau.[/bold red]")
         return None
         
-    console.print("\n[bold cyan]📡 MACHINES DÉTECTÉES SUR LE RÉSEAU 📡[/bold cyan]")
-    table = Table(show_header=True, header_style="bold magenta")
-    table.add_column("ID", style="cyan", justify="center")
+    console.print("\n[bold cyan]📡 CARTOGRAPHIE DU RÉSEAU 📡[/bold cyan]")
+    table = Table(show_header=True, header_style="bold magenta", border_style="blue")
     table.add_column("Adresse IP", style="green")
     table.add_column("Nom d'hôte", style="yellow")
+    table.add_column("Ports Ouverts (Services)", style="cyan")
     
-    for idx, host in enumerate(hosts):
+    reseau_data = [] # Pour stocker les IPs valides
+    
+    for host in hosts:
         hostname = nm[host].hostname() if nm[host].hostname() else "Inconnu"
-        table.add_row(str(idx + 1), host, hostname)
+        ports_trouves = []
+        
+        # On fouille dans les résultats pour lister les ports ouverts
+        for proto in nm[host].all_protocols():
+            for port in nm[host][proto].keys():
+                if nm[host][proto][port]['state'] == 'open':
+                    service = nm[host][proto][port]['name']
+                    ports_trouves.append(f"{port} ({service})")
+        
+        reseau_data.append(host)
+        
+        # On formate l'affichage des ports
+        ports_str = ", ".join(ports_trouves) if ports_trouves else "[dim]Aucun port standard[/dim]"
+        table.add_row(host, hostname, ports_str)
         
     console.print(table)
     
-    choix = questionary.text("Entre l'ID de la machine à cibler (ou 'q' pour annuler) :").ask()
+    choix_ip = questionary.text("Entre l'IP EXACTE de la machine à attaquer (ou 'q' pour annuler) :").ask()
     
-    if not choix or choix.lower() == 'q':
+    if not choix_ip or choix_ip.lower() == 'q':
         return None
         
-    try:
-        choix_idx = int(choix) - 1
-        if 0 <= choix_idx < len(hosts):
-            return hosts[choix_idx]
-    except:
-        pass
-    
-    console.print("[dim red]Choix invalide.[/dim red]")
-    return None
+    if choix_ip in reseau_data:
+        return choix_ip
+    else:
+        console.print("[bold red]IP invalide ou non détectée dans le tableau.[/bold red]")
+        return None
    
 # --- MENU PRINCIPAL (INTERACTIF) ---
 def interactive_menu(ip, open_ports):
@@ -381,7 +394,7 @@ def interactive_menu(ip, open_ports):
 
 if __name__ == "__main__":
     auto_update()
-    console.print(Panel.fit("[bold red]CYBER FRAMEWORK V16.7[/bold red]", subtitle="Édition Red Team - Scanner de Réseaux"))
+    console.print(Panel.fit("[bold red]CYBER FRAMEWORK V16.8[/bold red]", subtitle="Édition Red Team - Cartographie de Masse"))
     
     cible = ""
     if len(sys.argv) > 1:
@@ -393,20 +406,23 @@ if __name__ == "__main__":
             if not entree_brute: sys.exit()
             cible = entree_brute.replace("https://", "").replace("http://", "")
             
-        # LE CERVEAU RÉSEAU : Si c'est un réseau complet (contient un slash ou un tiret)
+        # LE CERVEAU RÉSEAU : Si c'est un réseau complet
         if "/" in cible or "-" in cible or cible.endswith(".0"):
-            ip_choisie = discover_hosts(cible)
+            ip_choisie = scan_network(cible)
             if not ip_choisie:
                 cible = "" # On réinitialise pour redemander une cible
                 continue
-            cible = ip_choisie # L'IP précise devient la cible principale !
+            cible = ip_choisie # L'IP sélectionnée devient la cible principale !
         
-        # Scan classique ou agressif sur l'IP UNIQUE
+        # -- IMPORTANT : On réinitialise la mémoire du rapport pour la nouvelle cible --
+        donnees_rapport = {"cible": cible, "date": "", "ports": [], "vulns": [], "mots_de_passe": []}
+        
+        # Scan profond (1000 ports complets) sur la cible choisie
         ports = scan_target(cible)
         
         if ports: 
             interactive_menu(cible, ports)
-            cible = "" # Réinitialise après avoir quitté le menu
+            cible = "" # Réinitialise après avoir quitté le menu pour enchaîner
         else: 
             console.print("\n[bold red]❌ Aucun port standard trouvé ou cible injoignable.[/bold red]")
             choix_fail = questionary.select(
