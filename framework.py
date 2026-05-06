@@ -442,7 +442,7 @@ def interactive_menu(ip, open_ports):
 
 if __name__ == "__main__":
     auto_update()
-    console.print(Panel.fit("[bold red]CYBER FRAMEWORK V16.10[/bold red]", subtitle="Édition Red Team - Mémoire Radar"))
+    console.print(Panel.fit("[bold red]CYBER FRAMEWORK V16.10[/bold red]", subtitle="hiiro_absolute"))
     
     cache_reseau = [] # La mémoire qui garde les machines du réseau !
 
