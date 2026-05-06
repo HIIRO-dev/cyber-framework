@@ -12,10 +12,11 @@ echo -e "${CYAN}╚════════════════════�
 # 1. Prérequis Système & Outils de Hacking
 echo -e "\n${GREEN}[+] 1/5 Installation de l'Arsenal Système...${NC}"
 sudo apt update -y
-# J'ai rajouté enum4linux et evil-winrm pour ton module Windows !
+# Ajout des outils V16 : metasploit-framework, nikto, steghide, libimage-exiftool-perl
 sudo apt install -y python3 python3-venv python3-pip git curl wget \
     nmap whatweb gobuster hydra netcat-traditional \
-    openvpn lynx john hashcat enum4linux evil-winrm
+    openvpn lynx john hashcat enum4linux evil-winrm \
+    metasploit-framework nikto steghide libimage-exiftool-perl
 
 # Installation de Nuclei
 if ! command -v nuclei &> /dev/null; then
@@ -36,7 +37,10 @@ fi
 echo -e "${GREEN}[+] 3/5 Configuration du Workspace...${NC}"
 WORKDIR=~/cyber-workspace
 REPO_DIR=$(pwd) # On sauvegarde l'emplacement du dossier Git cloné
+
+# Création des dossiers nécessaires (Ajout de arsenal_payloads pour V16)
 mkdir -p $WORKDIR/rapports
+mkdir -p $WORKDIR/arsenal_payloads
 
 cp $REPO_DIR/framework.py $WORKDIR/ 2>/dev/null
 cp $REPO_DIR/mon_icon.png $WORKDIR/ 2>/dev/null
@@ -48,7 +52,7 @@ cd $WORKDIR
 if [ ! -d "env" ]; then
     python3 -m venv env
 fi
-# J'ai ajouté pwncat-cs ici pour le super C2
+# Pwncat-cs et le reste sont bien là
 env/bin/pip install python-nmap rich colorama requests questionary pwncat-cs --break-system-packages 2>/dev/null || env/bin/pip install python-nmap rich colorama requests questionary pwncat-cs
 
 # 5. Création du lanceur blindé et du Bureau
