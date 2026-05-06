@@ -345,7 +345,59 @@ def scan_network(network):
     # On ajoute l'option de sortie à la fin de la liste
     choix_menu.append("❌ Quitter ce réseau (Scanner autre chose)")
     return choix_menu
-   
+
+# --- ÉTAPE 9 : CASSEUR DE HASHS (JOHN THE RIPPER) ---
+def run_cracker():
+    console.print("\n[bold red]💀 MODULE DE CRACKING (John The Ripper) 💀[/bold red]")
+    
+    hash_input = questionary.text("Colle le HASH ici (ou le chemin exact vers le fichier txt) :").ask()
+    if not hash_input: return
+    
+    # Si l'utilisateur a collé directement le hash (ce n'est pas un fichier)
+    target_file = hash_input
+    if not os.path.exists(hash_input):
+        target_file = "temp_hash.txt"
+        with open(target_file, "w") as f:
+            f.write(hash_input)
+            
+    wordlist = questionary.text(
+        "Chemin de la wordlist :", 
+        default="/usr/share/wordlists/rockyou.txt"
+    ).ask()
+    
+    console.print("\n[bold yellow][*] Les moteurs chauffent... John The Ripper est en cours ! (Fais Ctrl+C pour arrêter)[/bold yellow]")
+    try:
+        # Lancement du crack
+        subprocess.run(["john", f"--wordlist={wordlist}", target_file])
+        
+        # Affichage du résultat en clair
+        console.print("\n[bold green]RÉSULTATS DU CRACKING :[/bold green]")
+        subprocess.run(["john", "--show", target_file])
+    except Exception as e:
+        console.print(f"[bold red]Erreur avec John : {e}[/bold red]")
+
+
+# --- ÉTAPE 10 : SCANNER DE VULNÉRABILITÉS WEB (NIKTO) ---
+def run_vuln_scanner(ip, open_ports):
+    web_ports = [p['port'] for p in open_ports if p['port'] in [80, 443, 8080]]
+    if not web_ports: 
+        return console.print("[bold red]❌ Impossible : Aucun port Web (80, 443, 8080) détecté sur cette cible.[/bold red]")
+    
+    console.print("\n[bold red]☢️ SCANNER DE VULNÉRABILITÉS WEB (Nikto) ☢️[/bold red]")
+    console.print("[dim]Note : Ce scan est très bruyant et agressif. Il cherche les vieilles failles, les erreurs de config et les fichiers dangereux.[/dim]")
+    
+    for port in web_ports:
+        url = f"http://{ip}:{port}" if port != 443 else f"https://{ip}"
+        console.print(f"\n[bold yellow][*] Tir de barrage Nikto sur {url}... (Patiente, ça peut être long)[/bold yellow]")
+        
+        try:
+            # -Tuning 123b : On cible les fichiers intéressants, les mauvaises configs, et on évite le déni de service
+            subprocess.run(["nikto", "-h", url, "-Tuning", "123b"])
+        except KeyboardInterrupt:
+            console.print("[dim yellow]Scan Nikto annulé par l'opérateur.[/dim yellow]")
+        except Exception as e:
+            console.print(f"[bold red]Erreur avec Nikto : {e}[/bold red]")
+
 # --- MENU PRINCIPAL (INTERACTIF) ---
 def interactive_menu(ip, open_ports):
     while True:
@@ -367,7 +419,9 @@ def interactive_menu(ip, open_ports):
                 "5. Usine à Reverse Shells (Super C2 Pwncat)",
                 "6. Aide Escalade de Privilèges (SUID)",
                 "7. Metasploit Auto-Pwner (Armement auto)",
-                "8. Générer Rapport & Quitter"
+                "8. 💀 Cassage de Hashs hors-ligne (John The Ripper)",
+                "9. ☢️ Scanner de Vulnérabilités Web (Nikto)",
+                "10. 🚪 Générer Rapport & Quitter"
             ]
         ).ask()
         
@@ -380,7 +434,9 @@ def interactive_menu(ip, open_ports):
         elif "5." in choix: run_payload_generator()
         elif "6." in choix: run_suid_helper()
         elif "7." in choix: metasploit_autopwn(ip)
-        elif "8." in choix: 
+        elif "8." in choix: run_cracker()
+        elif "9." in choix: run_vuln_scanner(ip, open_ports)
+        elif "10." in choix: 
             generer_html()
             break
 
