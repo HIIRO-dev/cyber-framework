@@ -548,6 +548,50 @@ Quand tu attrapes un Reverse Shell netcat, il est souvent buggé (tu ne peux pas
     
     questionary.text("Appuie sur Entrée pour fermer le manuel et retourner au combat...").ask()
 
+# --- ÉTAPE 14 : LABORATOIRE FORENSICS & STÉGANOGRAPHIE ---
+def run_stego_forensics():
+    console.print("\n[bold red]🔍 LABORATOIRE FORENSICS & STÉGANOGRAPHIE 🔍[/bold red]")
+    console.print("[dim]Idéal pour analyser les images et fichiers suspects trouvés lors des CTF.[/dim]")
+    
+    fichier = questionary.text("Chemin du fichier/image à analyser :").ask()
+    
+    if not fichier or not os.path.exists(fichier):
+        return console.print("[bold red]❌ Fichier introuvable. Vérifie le chemin.[/bold red]")
+
+    # 1. EXIFTOOL (Métadonnées)
+    console.print("\n[bold yellow][*] 1. Extraction des Métadonnées (ExifTool)...[/bold yellow]")
+    try:
+        subprocess.run(["exiftool", fichier])
+    except FileNotFoundError:
+        console.print("[bold red]Exiftool n'est pas installé sur ta Kali. Tape: sudo apt install libimage-exiftool-perl[/bold red]")
+
+    # 2. STRINGS (Texte en clair)
+    console.print("\n[bold yellow][*] 2. Recherche de texte lisible en clair (Strings)...[/bold yellow]")
+    try:
+        console.print("[cyan]Les 15 premières chaînes trouvées :[/cyan]")
+        os.system(f"strings '{fichier}' | head -n 15")
+        console.print("[dim](Si tu veux tout voir, tape 'strings nomdufichier' dans ton terminal)[/dim]")
+    except Exception as e:
+        console.print(f"[bold red]Erreur avec Strings : {e}[/bold red]")
+
+    # 3. STEGHIDE (Fichiers cachés)
+    console.print("\n[bold yellow][*] 3. Extraction de données cachées (Steghide)...[/bold yellow]")
+    mdp = questionary.text("Mot de passe Steghide (laisse vide si tu n'en as pas trouvé) :").ask()
+    
+    cmd_steghide = ["steghide", "extract", "-sf", fichier]
+    if mdp:
+        cmd_steghide.extend(["-p", mdp])
+    else:
+        cmd_steghide.extend(["-p", ""]) 
+
+    try:
+        subprocess.run(cmd_steghide)
+        console.print("[bold green]Si Steghide a trouvé quelque chose, il vient de l'extraire dans ton dossier actuel ![/bold green]")
+    except FileNotFoundError:
+        console.print("[bold red]Steghide n'est pas installé sur ta Kali. Tape: sudo apt install steghide[/bold red]")
+    except Exception as e:
+        console.print(f"[dim]Aucune donnée cachée trouvée avec ce mot de passe, ou fichier non supporté.[/dim]")
+
 # --- MENU PRINCIPAL (INTERACTIF) ---
 def interactive_menu(ip, open_ports):
     while True:
@@ -574,7 +618,8 @@ def interactive_menu(ip, open_ports):
                 "10. 🚁 Héberger/Distribuer des payloads (Serveur Web local)",
                 "11. ☣️ Usine à Reverse Shells (Générer des Payloads)",
                 "12. 📖 Bibliothèque Red Team (Guide & Astuces)",
-                "13. 🚪 Générer Rapport & Quitter"
+                "13. 🔍 Laboratoire Forensics (Analyse d'images/fichiers)",
+                "14. 🚪 Générer Rapport & Quitter"
             ]
         ).ask()
         
@@ -592,7 +637,8 @@ def interactive_menu(ip, open_ports):
         elif "10." in choix: serve_payloads()
         elif "11." in choix: generate_payload()
         elif "12." in choix: show_help_menu()
-        elif "13." in choix:
+        elif "13." in choix: run_stego_forensics()
+        elif "14." in choix:
             generer_html()
             break
 
