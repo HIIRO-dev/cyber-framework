@@ -298,7 +298,7 @@ def metasploit_autopwn(ip):
         console.print(f"[bold red]Erreur lors du lancement de Metasploit : {e}[/bold red]")
 
 
-# --- MODULE DE CARTOGRAPHIE RÉSEAU (Vue Globale + Flèches) ---
+# --- MODULE DE CARTOGRAPHIE RÉSEAU (Vue Globale) ---
 def scan_network(network):
     console.print(f"\n[bold yellow][*] Déploiement du radar sur le réseau {network}...[/bold yellow]")
     nm = nmap.PortScanner()
@@ -308,12 +308,12 @@ def scan_network(network):
             nm.scan(hosts=network, arguments='-Pn -F -sV -T4') 
         except Exception as e:
             console.print(f"[bold red]Erreur de scan réseau : {e}[/bold red]")
-            return None
+            return []
             
     hosts = nm.all_hosts()
     if not hosts:
         console.print("[bold red]❌ Aucune machine trouvée sur ce réseau.[/bold red]")
-        return None
+        return []
         
     console.print("\n[bold cyan]📡 CARTOGRAPHIE DU RÉSEAU 📡[/bold cyan]")
     table = Table(show_header=True, header_style="bold magenta", border_style="blue")
@@ -321,7 +321,6 @@ def scan_network(network):
     table.add_column("Nom d'hôte", style="yellow")
     table.add_column("Ports Ouverts (Services)", style="cyan")
     
-    # Nouvelle liste pour le menu interactif
     choix_menu = []
     
     for host in hosts:
@@ -337,27 +336,15 @@ def scan_network(network):
         ports_str = ", ".join(ports_trouves) if ports_trouves else "Aucun port standard"
         table.add_row(host, hostname, ports_str)
         
-        # On ajoute la machine à la liste des choix avec son nom
+        # Ajout à la liste mémoire
         choix_menu.append(f"{host} - {hostname}")
         
     console.print(table)
-    console.print("\n") # Petit espace pour respirer
+    console.print("\n")
     
-    # On rajoute l'option pour annuler
-    choix_menu.append("❌ Annuler (Scanner une autre cible)")
-    
-    # LE NOUVEAU MENU AVEC LES FLÈCHES
-    selection = questionary.select(
-        "🎯 Choisis la machine à infiltrer (Use arrow keys) :",
-        choices=choix_menu
-    ).ask()
-    
-    if not selection or "❌ Annuler" in selection:
-        return None
-        
-    # On extrait juste l'IP (la partie avant le " - ")
-    ip_choisie = selection.split(" - ")[0]
-    return ip_choisie
+    # On ajoute l'option de sortie à la fin de la liste
+    choix_menu.append("❌ Quitter ce réseau (Scanner autre chose)")
+    return choix_menu
    
 # --- MENU PRINCIPAL (INTERACTIF) ---
 def interactive_menu(ip, open_ports):
@@ -399,42 +386,54 @@ def interactive_menu(ip, open_ports):
 
 if __name__ == "__main__":
     auto_update()
-    console.print(Panel.fit("[bold red]CYBER FRAMEWORK V16.8[/bold red]", subtitle="Édition Red Team - Cartographie de Masse"))
+    console.print(Panel.fit("[bold red]CYBER FRAMEWORK V16.10[/bold red]", subtitle="Édition Red Team - Mémoire Radar"))
     
-    cible = ""
-    if len(sys.argv) > 1:
-        cible = sys.argv[1].replace("https://", "").replace("http://", "")
+    cache_reseau = [] # La mémoire qui garde les machines du réseau !
 
     while True:
-        if not cible:
+        cible = ""
+        
+        # SI ON A UN RÉSEAU EN MÉMOIRE
+        if cache_reseau:
+            selection = questionary.select(
+                "🎯 Radar Actif : Choisis ta prochaine victime (Use arrow keys) :",
+                choices=cache_reseau
+            ).ask()
+            
+            if not selection or "❌ Quitter ce réseau" in selection:
+                cache_reseau = [] # On vide la mémoire
+                continue # On recommence la boucle pour demander une nouvelle IP
+                
+            cible = selection.split(" - ")[0]
+            
+        # SI LA MÉMOIRE EST VIDE (Nouveau scan)
+        else:
             entree_brute = questionary.text("IP de la cible ou Réseau (ex: 192.168.1.0/24) :").ask()
             if not entree_brute: sys.exit()
-            cible = entree_brute.replace("https://", "").replace("http://", "")
+            cible_saisie = entree_brute.replace("https://", "").replace("http://", "")
             
-        # LE CERVEAU RÉSEAU : Si c'est un réseau complet
-        if "/" in cible or "-" in cible or cible.endswith(".0"):
-            ip_choisie = scan_network(cible)
-            if not ip_choisie:
-                cible = "" # On réinitialise pour redemander une cible
-                continue
-            cible = ip_choisie # L'IP sélectionnée devient la cible principale !
-        
-        # -- IMPORTANT : On réinitialise la mémoire du rapport pour la nouvelle cible --
+            # Si l'utilisateur tape un réseau
+            if "/" in cible_saisie or "-" in cible_saisie or cible_saisie.endswith(".0"):
+                cache_reseau = scan_network(cible_saisie)
+                continue # On relance la boucle, ce qui va ouvrir le menu avec les flèches !
+            else:
+                cible = cible_saisie # C'est une IP unique
+
+        # -- ON LANCE L'ATTAQUE SUR LA CIBLE --
         donnees_rapport = {"cible": cible, "date": "", "ports": [], "vulns": [], "mots_de_passe": []}
-        
-        # Scan profond (1000 ports complets) sur la cible choisie
         ports = scan_target(cible)
         
         if ports: 
             interactive_menu(cible, ports)
-            cible = "" # Réinitialise après avoir quitté le menu pour enchaîner
+            # Quand tu fais "Quitter" dans le menu interactif, le code arrive ici.
+            # La boucle while True recommence. Si le cache_reseau est plein, il te réaffiche la liste !
         else: 
             console.print("\n[bold red]❌ Aucun port standard trouvé ou cible injoignable.[/bold red]")
             choix_fail = questionary.select(
                 "Que voulez-vous faire ?",
                 choices=[
                     "1. 🚀 Lancer un scan AGRESSIF (Tous les 65535 ports)",
-                    "2. 🔄 Scanner une autre IP / Réseau",
+                    "2. 🔄 Scanner une autre cible",
                     "3. 🚪 Quitter"
                 ]
             ).ask()
@@ -446,7 +445,5 @@ if __name__ == "__main__":
                 if ports:
                     interactive_menu(cible, ports)
                 else:
-                    console.print("\n[bold red]☠️ Même en mode agressif, la cible est verrouillée (ou éteinte).[/bold red]\n")
-                cible = ""
-            elif "2." in choix_fail:
-                cible = ""
+                    console.print("\n[bold red]☠️ Même en mode agressif, la cible est verrouillée.[/bold red]\n")
+            # Si option 2, on ne fait rien, la boucle recommence.
