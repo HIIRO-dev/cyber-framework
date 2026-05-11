@@ -301,7 +301,7 @@ def metasploit_autopwn(ip):
         console.print(f"[bold red]Erreur lors du lancement de Metasploit : {e}[/bold red]")
 
 
-# --- MODULE DE CARTOGRAPHIE RÉSEAU (Vue Globale) ---
+# --- MODULE DE CARTOGRAPHIE RÉSEAU (Vue Globale & Extracteur Auto) ---
 def scan_network(network):
     console.print(f"\n[bold yellow][*] Déploiement du radar sur le réseau {network}...[/bold yellow]")
     nm = nmap.PortScanner()
@@ -325,6 +325,7 @@ def scan_network(network):
     table.add_column("Ports Ouverts (Services)", style="cyan")
     
     choix_menu = []
+    ips_ssh = [] # La fameuse liste qui va stocker les cibles SSH !
     
     for host in hosts:
         hostname = nm[host].hostname() if nm[host].hostname() else "Inconnu"
@@ -335,17 +336,40 @@ def scan_network(network):
                 if nm[host][proto][port]['state'] == 'open':
                     service = nm[host][proto][port]['name']
                     ports_trouves.append(f"{port} ({service})")
+                    
+                    # SI ON TROUVE DU SSH, ON MET L'IP DE CÔTÉ
+                    if port == 22:
+                        ips_ssh.append(host)
         
         ports_str = ", ".join(ports_trouves) if ports_trouves else "Aucun port standard"
         table.add_row(host, hostname, ports_str)
-        
-        # Ajout à la liste mémoire
         choix_menu.append(f"{host} - {hostname}")
         
     console.print(table)
-    console.print("\n")
     
-    # On ajoute l'option de sortie à la fin de la liste
+    # --- EXPORT AUTOMATIQUE DES CIBLES ---
+    if ips_ssh:
+        # On crée le dossier rapports s'il n'existe pas
+        if not os.path.exists("rapports"): os.makedirs("rapports")
+            
+        chemin_fichier = os.path.abspath("rapports/cibles_ssh.txt")
+        
+        # On écrit les IP dans le fichier
+        with open(chemin_fichier, "w") as f:
+            for ip in ips_ssh:
+                f.write(f"{ip}\n")
+        
+        # Magie : On injecte le chemin dans le presse-papier de Kali
+        try:
+            subprocess.run(["xclip", "-selection", "clipboard"], input=chemin_fichier.encode('utf-8'), stderr=subprocess.DEVNULL)
+            console.print(f"\n[bold green]🎯 DÉPLOIEMENT POSSIBLE : {len(ips_ssh)} machine(s) avec SSH détectée(s) ![/bold green]")
+            console.print(f"[bold cyan]📋 Fichier généré et chemin copié dans ton presse-papier :[/bold cyan] [magenta]{chemin_fichier}[/magenta]")
+        except Exception as e:
+            # Si xclip n'est pas installé, on affiche juste le chemin
+            console.print(f"\n[bold green]🎯 DÉPLOIEMENT POSSIBLE : {len(ips_ssh)} machine(s) avec SSH détectée(s) ![/bold green]")
+            console.print(f"📥 Fichier prêt : [bold magenta]{chemin_fichier}[/bold magenta] [dim](Sélectionne ce texte pour le copier)[/dim]")
+
+    console.print("\n")
     choix_menu.append("❌ Quitter ce réseau (Scanner autre chose)")
     return choix_menu
 
